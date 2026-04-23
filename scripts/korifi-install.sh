@@ -8,7 +8,6 @@ export BASE_DOMAIN="shivlab.com"
 export GATEWAY_CLASS_NAME="contour"
 export KORIFI_GATEWAY_NAMESPACE="korifi-gateway"
 
-# Registry config — twuni runs as a NodePort so k3s containerd can reach it
 export REGISTRY_NAMESPACE="docker-registry"
 export REGISTRY_HOST="localregistry-docker-registry.${REGISTRY_NAMESPACE}.svc.cluster.local"
 export REGISTRY_PORT="5000"
@@ -28,14 +27,7 @@ helm upgrade --install docker-registry twuni/docker-registry \
     --set persistence.size=10Gi \
     --wait
 
-# ── 2. Patch k3s containerd to trust the in-cluster registry ─────────────────
-# k3s reads per-registry config from /etc/rancher/k3s/registries.yaml
-# This tells containerd on the node to mirror pulls via the NodePort endpoint
-# and skip TLS (registry is HTTP-only inside the cluster).
-#
-# If you're running multi-node k3s, this file needs to exist on EVERY node
-# and each node needs `systemctl restart k3s` (or k3s-agent for workers).
-
+# ── 2. Patch k3s containerd ───────────────────────────────────────────────────
 sudo mkdir -p /etc/rancher/k3s
 sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
@@ -50,18 +42,22 @@ EOF
 
 echo "Restarting k3s to pick up registry config..."
 sudo systemctl restart k3s
-# Wait for node to come back ready
 kubectl wait node --all --for=condition=Ready --timeout=120s
 
 # ── 3. cert-manager ──────────────────────────────────────────────────────────
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
+kubectl rollout status deployment/cert-manager -n cert-manager --timeout=120s
+kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout=120s
 kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=120s
 
 # ── 4. kpack ─────────────────────────────────────────────────────────────────
 kubectl apply -f https://github.com/buildpacks-community/kpack/releases/download/v0.17.1/release-0.17.1.yaml
+kubectl rollout status deployment/kpack-controller -n kpack --timeout=120s
+kubectl rollout status deployment/kpack-webhook -n kpack --timeout=120s
 
 # ── 5. Contour gateway provisioner ───────────────────────────────────────────
 kubectl apply -f https://raw.githubusercontent.com/projectcontour/contour/refs/heads/main/examples/render/contour-gateway-provisioner.yaml
+kubectl rollout status deployment/contour-gateway-provisioner -n projectcontour --timeout=120s
 
 kubectl apply -f - <<EOF
 kind: GatewayClass
@@ -74,6 +70,7 @@ EOF
 
 # ── 6. Service binding runtime ───────────────────────────────────────────────
 kubectl apply -f https://github.com/servicebinding/runtime/releases/download/v1.0.0/servicebinding-runtime-v1.0.0.yaml
+kubectl rollout status deployment/servicebinding-controller-manager -n servicebinding-system --timeout=120s
 
 # ── 7. Namespaces ─────────────────────────────────────────────────────────────
 kubectl apply -f - <<EOF
@@ -99,9 +96,17 @@ metadata:
   name: $KORIFI_GATEWAY_NAMESPACE
 EOF
 
-# ── 8. Korifi ─────────────────────────────────────────────────────────────────
-# containerRepositoryPrefix now points at the in-cluster twuni registry
-# via its cluster-internal DNS name + port (what kpack/pods will use)
+# ── 8. Registry credentials secret ───────────────────────────────────────────
+# Korifi's CFOrg controller propagates this secret into every org/space namespace.
+# twuni has no auth configured, but the secret must exist — use dummy values.
+kubectl create secret docker-registry image-registry-credentials \
+    --namespace="$ROOT_NAMESPACE" \
+    --docker-server="${REGISTRY_HOST}:${REGISTRY_PORT}" \
+    --docker-username="unused" \
+    --docker-password="unused" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+# ── 9. Korifi ─────────────────────────────────────────────────────────────────
 helm install korifi https://github.com/cloudfoundry/korifi/releases/download/v0.18.0/korifi-0.18.0.tgz \
     --namespace="$KORIFI_NAMESPACE" \
     --set=generateIngressCertificates=true \
