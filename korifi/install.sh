@@ -15,7 +15,7 @@ export REGISTRY_PORT="5000"
 export REGISTRY_NODEPORT="30050"
 
 # ── 1. In-cluster registry (twuni) ───────────────────────────────────────────
-helm repo add twuni https://helm.twun.io
+helm repo add twuni https://twuni.github.io/docker-registry.helm
 helm repo update
 
 kubectl create namespace "$REGISTRY_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
