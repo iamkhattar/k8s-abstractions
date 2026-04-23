@@ -6,7 +6,7 @@ users:
     lock_passwd: true
     ssh-authorized-keys:
       - ${local_ssh_public_key}
-  - name: iamkhattar
+  - name: groot
     shell: /bin/bash
     sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     lock_passwd: true
@@ -16,17 +16,28 @@ users:
 package_update: true
 package_upgrade: true
 
+hostname: knowhere
+
 packages:
   - ansible
   - git
+  - curl
+  - gpg
+  - apt-transport-https
 
 write_files:
   - path: /etc/network/interfaces.d/60-private-network.cfg
     content: |
       auto enp7s0
       iface enp7s0 inet dhcp
+  - path: /etc/apt/sources.list.d/helm-stable-debian.list
+    content: |
+      deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main
 
 runcmd:
+  - curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey | gpg --dearmor | tee /usr/share/keyrings/helm.gpg > /dev/null
+  - apt-get update
+  - apt-get install -y helm
   - systemctl restart networking
   - git clone https://github.com/iamkhattar/k8s-abstractions.git /opt/homelab
   - chown -R ansible:ansible /opt/homelab

@@ -24,4 +24,5 @@ destory:
 # Login to K8S Cluster
 [group: 'cluster']
 login:
-    @echo "Creating K8S cluster..."
+    @echo "Logging into K8S cluster..."
+    @cd {{INFRA_DIR}} && ssh -o StrictHostKeyChecking=no -i config/.ssh/id_rsa groot@$(terraform output -raw server_node_ip)
