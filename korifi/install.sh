@@ -19,6 +19,8 @@ spec:
   controllerName: projectcontour.io/gateway-controller
 EOF
 
+kubectl apply -f https://github.com/servicebinding/runtime/releases/download/v1.0.0/servicebinding-runtime-v1.0.0.yaml
+
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Namespace
