@@ -36,7 +36,13 @@ runcmd:
   - echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | tee /etc/apt/sources.list.d/helm-stable-debian.list
   - apt-get update
   - apt-get install -y helm
+  - wget https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.deb -O /tmp/k9s_linux_amd64.deb
+  - apt-get install -y /tmp/k9s_linux_amd64.deb
+  - rm /tmp/k9s_linux_amd64.deb
   - systemctl restart networking
   - git clone https://github.com/iamkhattar/k8s-abstractions.git /opt/homelab
   - chown -R ansible:ansible /opt/homelab
   - su - ansible -s /bin/bash -c "cd /opt/homelab/ansible && ansible-playbook playbooks/site.yml -i inventory/inventory-server.yml -e 'token=${k3s_api_token}'"
+  - mkdir -p /home/groot/.kube
+  - cp /etc/rancher/k3s/k3s.yaml /home/groot/.kube/config
+  - chown -R groot:groot /home/groot/.kube
