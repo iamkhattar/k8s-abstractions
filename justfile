@@ -17,8 +17,8 @@ apply:
 
 # Destory K8S Cluster using Terraform
 [group: 'cluster']
-destory:
-    @echo "Creating K8S cluster..."
+destroy:
+    @echo "Destroying K8S cluster..."
     @cd {{INFRA_DIR}} && terraform destroy -var-file=variables.tfvars -auto-approve
 
 # Login to K8S Cluster
