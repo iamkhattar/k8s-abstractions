@@ -27,7 +27,7 @@ helm upgrade --install docker-registry twuni/docker-registry \
 
 # ── 2. Resolve node IP + set registry coords ─────────────────────────────────
 # Use node InternalIP + NodePort so kpack's HTTP client can reach the registry
-# directly without relying on cluster DNS (which had the wrong service name).
+# directly without relying on cluster DNS.
 NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 export REGISTRY_HOST="${NODE_IP}"
 export REGISTRY_PORT="${REGISTRY_NODEPORT}"
@@ -52,17 +52,24 @@ sudo systemctl restart k3s
 kubectl wait node --all --for=condition=Ready --timeout=120s
 
 # ── 4. cert-manager ──────────────────────────────────────────────────────────
+# Apply twice — first pass installs CRDs, second pass creates CRs that depend
+# on them. Idempotent on reruns.
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml || true
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 kubectl rollout status deployment/cert-manager            -n cert-manager --timeout=120s
 kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout=120s
 kubectl rollout status deployment/cert-manager-webhook    -n cert-manager --timeout=120s
 
 # ── 5. kpack ─────────────────────────────────────────────────────────────────
+# Same double-apply pattern — ClusterLifecycle CR is in the same manifest as
+# its CRD and loses the race on first apply.
+kubectl apply -f https://github.com/buildpacks-community/kpack/releases/download/v0.17.1/release-0.17.1.yaml || true
 kubectl apply -f https://github.com/buildpacks-community/kpack/releases/download/v0.17.1/release-0.17.1.yaml
 kubectl rollout status deployment/kpack-controller -n kpack --timeout=120s
 kubectl rollout status deployment/kpack-webhook    -n kpack --timeout=120s
 
 # ── 6. Contour gateway provisioner ───────────────────────────────────────────
+kubectl apply -f https://raw.githubusercontent.com/projectcontour/contour/refs/heads/main/examples/render/contour-gateway-provisioner.yaml || true
 kubectl apply -f https://raw.githubusercontent.com/projectcontour/contour/refs/heads/main/examples/render/contour-gateway-provisioner.yaml
 kubectl rollout status deployment/contour-gateway-provisioner -n projectcontour --timeout=120s
 
@@ -76,6 +83,7 @@ spec:
 EOF
 
 # ── 7. Service binding runtime ───────────────────────────────────────────────
+kubectl apply -f https://github.com/servicebinding/runtime/releases/download/v1.0.0/servicebinding-runtime-v1.0.0.yaml || true
 kubectl apply -f https://github.com/servicebinding/runtime/releases/download/v1.0.0/servicebinding-runtime-v1.0.0.yaml
 kubectl rollout status deployment/servicebinding-controller-manager -n servicebinding-system --timeout=120s
 
