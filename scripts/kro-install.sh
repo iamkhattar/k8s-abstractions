@@ -81,3 +81,5 @@ spec:
                         port:
                           number: 80
 EOF
+
+kubectl get rgd my-application -owide
