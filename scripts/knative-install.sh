@@ -14,3 +14,8 @@ kubectl patch configmap/config-network \
 kubectl --namespace contour-external get service envoy
 
 kubectl get pods -n knative-serving
+
+kubectl patch configmap config-domain \
+  --namespace knative-serving \
+  --type merge \
+  --patch '{"data":{"shivlab.com":""}}'
