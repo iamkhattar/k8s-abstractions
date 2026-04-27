@@ -48,3 +48,4 @@ infra/config/.ssh/id_rsa.pub
 *.tgz
 .terraform.lock.hcl
 .kube
+demos/korifi.gif
