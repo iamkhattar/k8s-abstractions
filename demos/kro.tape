@@ -69,7 +69,12 @@ Sleep 500ms
 Enter 1
 Sleep 1s
 
-Type "kubectl patch application my-app-instance --type=merge -p '{\"spec\":{\"replicas\":3}}'"
+Type "echo 'spec:' > patch.yaml && echo '  replicas: 3' >> patch.yaml"
+Sleep 500ms
+Enter 1
+Sleep 1s
+
+Type "kubectl patch application my-app-instance --type=merge --patch-file patch.yaml"
 Sleep 500ms
 Enter 1
 Sleep 3s
@@ -95,7 +100,7 @@ Sleep 4s
 
 # ── Clean up ──────────────────────────────────────────────────────────────────
 
-Type "echo '▶ Cleaning up'"
+Type "echo 'Cleaning up'"
 Sleep 500ms
 Enter 1
 Sleep 1s
