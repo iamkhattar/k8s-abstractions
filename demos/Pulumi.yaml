@@ -1,0 +1,3 @@
+name: k3s-app
+runtime: go
+description: Simple app/service/ingress stack for k3s

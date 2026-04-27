@@ -43,8 +43,8 @@ variable "cluster" {
   )
   description = "Cluster location configuration"
   default = {
-    location : "fsn1",
-    datacenter : "fsn1-dc14"
+    location : "nbg1",
+    datacenter : "nbg1-dc3"
   }
 }
 

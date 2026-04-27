@@ -1,0 +1,5 @@
+config:
+  k3s-app:name: my-app
+  k3s-app:image: nginx
+  k3s-app:replicas: "2"
+encryptionsalt: v1:3i0Gyw4hpZQ=:v1:b++tWlP0lBBXeVYc:/oAvyyhQmiB4i1nImXOpXOxrBoRh7A==
