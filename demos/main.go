@@ -69,7 +69,7 @@ func main() {
 				Ports: corev1.ServicePortArray{
 					&corev1.ServicePortArgs{
 						Port:       pulumi.Int(80),
-						TargetPort: pulumi.IntOrStringInput(pulumi.Int(80)),
+						TargetPort: pulumi.Int(80),
 						Protocol:   pulumi.String("TCP"),
 					},
 				},
