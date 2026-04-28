@@ -299,9 +299,8 @@ spec:
                     kind: Ingress
                     metadata:
                       namespace: default
-                      annotations:
-                        kubernetes.io/ingress.class: traefik
                     spec:
+                      ingressClassName: traefik
                       rules:
                         - http:
                             paths:
