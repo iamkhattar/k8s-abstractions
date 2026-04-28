@@ -1,0 +1,18 @@
+
+Copy
+
+# instance.yaml — developer-facing Application claim.
+# This is all a developer ever needs to write.
+apiVersion: demo.shivlab.com/v1alpha1
+kind: Application
+metadata:
+  name: my-app-instance
+  namespace: default
+spec:
+  name: my-app
+  image: nginx:alpine
+  replicas: 2
+  ingress:
+    enabled: true
+    host: nginx.shivlab.com
+ 
