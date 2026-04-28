@@ -1,6 +1,3 @@
-
-Copy
-
 # instance.yaml — developer-facing Application claim.
 # This is all a developer ever needs to write.
 apiVersion: demo.shivlab.com/v1alpha1

@@ -27,21 +27,42 @@ helm upgrade --install crossplane crossplane-stable/crossplane \
 echo ">>> Crossplane pods:"
 kubectl get pods -n "${NAMESPACE}"
 
-# ── 2. Install the Kubernetes provider ────────────────────────────────────────
-echo ">>> Installing provider-kubernetes ${PROVIDER_K8S_VERSION}"
-kubectl apply -f - <<EOF
-apiVersion: pkg.crossplane.io/v1
-kind: Provider
+# ── 2. Wait for Crossplane CRDs to be fully established ───────────────────────
+# helm --wait ensures pods are ready, but the CRDs themselves (registered by
+# those pods) can still be a few seconds behind. Gate on them explicitly before
+# attempting to create any Crossplane resources.
+echo ">>> Waiting for Crossplane CRDs to be established …"
+for crd in \
+  compositeresourcedefinitions.apiextensions.crossplane.io \
+  compositions.apiextensions.crossplane.io \
+  functions.pkg.crossplane.io \
+  providers.pkg.crossplane.io \
+  deploymentruntimeconfigs.pkg.crossplane.io; do
+  kubectl wait --for=condition=Established "crd/${crd}" --timeout=120s
+done
+
+# ── 3. Install function-patch-and-transform ───────────────────────────────────
+# Install the function BEFORE the Composition that references it; otherwise the
+# Composition is accepted but immediately enters an error state.
+echo ">>> Installing function-patch-and-transform"
+kubectl apply -f - <<'EOF'
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Function
 metadata:
-  name: provider-kubernetes
+  name: function-patch-and-transform
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/provider-kubernetes:v${PROVIDER_K8S_VERSION}
-  runtimeConfigRef:
-    name: provider-kubernetes-config
+  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.8.0
 EOF
 
-# Give the provider a runtime config so its SA has cluster-admin for the demo.
-# Tighten this for production.
+echo ">>> Waiting for function-patch-and-transform to become healthy …"
+kubectl wait function/function-patch-and-transform \
+  --for=condition=Healthy \
+  --timeout=300s
+
+# ── 4. Install the Kubernetes provider ────────────────────────────────────────
+echo ">>> Installing provider-kubernetes ${PROVIDER_K8S_VERSION}"
+
+# DeploymentRuntimeConfig must exist before the Provider references it.
 kubectl apply -f - <<'EOF'
 apiVersion: pkg.crossplane.io/v1beta1
 kind: DeploymentRuntimeConfig
@@ -53,12 +74,24 @@ spec:
       name: provider-kubernetes
 EOF
 
+kubectl apply -f - <<EOF
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-kubernetes
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/provider-kubernetes:v${PROVIDER_K8S_VERSION}
+  runtimeConfigRef:
+    name: provider-kubernetes-config
+EOF
+
 echo ">>> Waiting for provider-kubernetes to become healthy …"
 kubectl wait provider/provider-kubernetes \
   --for=condition=Healthy \
   --timeout=300s
 
-# Grant the provider's SA cluster-admin (demo convenience only)
+# ── 5. Grant the provider SA cluster-admin (demo convenience only) ─────────────
+# Tighten this for production.
 PROVIDER_SA=$(kubectl get sa -n "${NAMESPACE}" \
   -o jsonpath='{.items[?(@.metadata.annotations.pkg\.crossplane\.io/revision)].metadata.name}' \
   | tr ' ' '\n' | grep provider-kubernetes | head -1)
@@ -68,7 +101,7 @@ kubectl create clusterrolebinding provider-kubernetes-admin \
   --serviceaccount="${NAMESPACE}:${PROVIDER_SA}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# ── 3. ProviderConfig — talk to the local cluster ─────────────────────────────
+# ── 6. ProviderConfig — talk to the local cluster ─────────────────────────────
 kubectl apply -f - <<'EOF'
 apiVersion: kubernetes.crossplane.io/v1alpha1
 kind: ProviderConfig
@@ -79,10 +112,10 @@ spec:
     source: InjectedIdentity
 EOF
 
-# ── 4. CompositeResourceDefinition (XRD) ─────────────────────────────────────
-# Equivalent to kro's ResourceGraphDefinition: declares the "Application" CRD
-# that developers interact with.
-echo ">>> Applying XRD (Application)"
+# ── 7. CompositeResourceDefinition (XRD) ──────────────────────────────────────
+# Declares the developer-facing "Application" CRD; equivalent to kro's
+# ResourceGraphDefinition.
+echo ">>> Applying XRD (XApplication / Application)"
 kubectl apply -f - <<'EOF'
 apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
@@ -133,9 +166,20 @@ spec:
                   type: integer
 EOF
 
-# ── 5. Composition ────────────────────────────────────────────────────────────
-# Wires the XApplication schema to real Kubernetes resources via
-# provider-kubernetes Objects (Deployment + Service + Ingress).
+echo ">>> Waiting for XRD to be established …"
+kubectl wait xrd/xapplications.demo.shivlab.com \
+  --for=condition=Established \
+  --timeout=120s
+
+echo ">>> Waiting for XRD claim CRD (applications.demo.shivlab.com) to be established …"
+kubectl wait --for=condition=Established \
+  crd/applications.demo.shivlab.com \
+  --timeout=120s
+
+# ── 8. Composition ─────────────────────────────────────────────────────────────
+# Wires XApplication → Deployment + Service + Ingress via provider-kubernetes
+# Objects. Ingress is always created; gate ingress.enabled at the claim level
+# or switch to function-go-templating for conditional resource rendering.
 echo ">>> Applying Composition"
 kubectl apply -f - <<'EOF'
 apiVersion: apiextensions.crossplane.io/v1
@@ -159,7 +203,7 @@ spec:
         kind: Resources
         resources:
 
-          # ── Deployment ────────────────────────────────────────────────────
+          # ── Deployment ──────────────────────────────────────────────────────
           - name: deployment
             base:
               apiVersion: kubernetes.crossplane.io/v1alpha2
@@ -204,7 +248,7 @@ spec:
                 fromFieldPath: spec.replicas
                 toFieldPath: spec.forProvider.manifest.spec.replicas
 
-          # ── Service ───────────────────────────────────────────────────────
+          # ── Service ─────────────────────────────────────────────────────────
           - name: service
             base:
               apiVersion: kubernetes.crossplane.io/v1alpha2
@@ -235,10 +279,9 @@ spec:
                 fromFieldPath: spec.name
                 toFieldPath: spec.forProvider.manifest.spec.selector.app
 
-          # ── Ingress (always created; ingress.enabled controls annotation) ─
-          # Crossplane compositions can't conditionally omit resources without
-          # function-go-templating; here we gate at the claim level or use a
-          # separate composition selected by a label.
+          # ── Ingress ─────────────────────────────────────────────────────────
+          # Note: always created. To make this conditional on ingress.enabled,
+          # replace this step with function-go-templating.
           - name: ingress
             base:
               apiVersion: kubernetes.crossplane.io/v1alpha2
@@ -284,21 +327,7 @@ spec:
                       fmt: "%s-svc"
 EOF
 
-# ── 6. Install function-patch-and-transform ───────────────────────────────────
-echo ">>> Installing function-patch-and-transform"
-kubectl apply -f - <<'EOF'
-apiVersion: pkg.crossplane.io/v1beta1
-kind: Function
-metadata:
-  name: function-patch-and-transform
-spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.8.0
-EOF
-
-kubectl wait function/function-patch-and-transform \
-  --for=condition=Healthy \
-  --timeout=300s
-
+# ── Done ───────────────────────────────────────────────────────────────────────
 echo ""
 echo "✔  Crossplane bootstrap complete."
 echo ""
