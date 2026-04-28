@@ -277,6 +277,7 @@ spec:
                 transforms:
                   - type: string
                     string:
+                      type: Format
                       fmt: "%s-svc"
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.name
@@ -317,6 +318,7 @@ spec:
                 transforms:
                   - type: string
                     string:
+                      type: Format
                       fmt: "%s-ingress"
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.ingress.host
@@ -327,6 +329,7 @@ spec:
                 transforms:
                   - type: string
                     string:
+                      type: Format
                       fmt: "%s-svc"
 EOF
 
