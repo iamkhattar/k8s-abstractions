@@ -92,13 +92,16 @@ kubectl wait provider/provider-kubernetes \
 
 # ── 5. Grant the provider SA cluster-admin (demo convenience only) ─────────────
 # Tighten this for production.
-PROVIDER_SA=$(kubectl get sa -n "${NAMESPACE}" \
-  -o jsonpath='{.items[?(@.metadata.annotations.pkg\.crossplane\.io/revision)].metadata.name}' \
-  | tr ' ' '\n' | grep provider-kubernetes | head -1)
+# Crossplane names the SA after the provider per the DeploymentRuntimeConfig
+# serviceAccountTemplate above. Wait for it to exist before binding.
+echo ">>> Waiting for provider-kubernetes ServiceAccount to appear …"
+until kubectl get sa provider-kubernetes -n "${NAMESPACE}" &>/dev/null; do
+  sleep 2
+done
 
 kubectl create clusterrolebinding provider-kubernetes-admin \
   --clusterrole=cluster-admin \
-  --serviceaccount="${NAMESPACE}:${PROVIDER_SA}" \
+  --serviceaccount="${NAMESPACE}:provider-kubernetes" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # ── 6. ProviderConfig — talk to the local cluster ─────────────────────────────
