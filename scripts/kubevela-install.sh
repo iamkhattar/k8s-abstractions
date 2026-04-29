@@ -1,59 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-KUBEVELA_VERSION="1.10.8"
-VELA_NAMESPACE="vela-system"
+echo "==> Installing KubeVela CLI"
+curl -fsSL https://kubevela.io/script/install.sh | bash
 
-# ── Colours ───────────────────────────────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-info()    { echo -e "${GREEN}[INFO]${NC}  $*"; }
-warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
-
-# ── Preflight ─────────────────────────────────────────────────────────────────
-info "Checking prerequisites..."
-for cmd in helm kubectl; do
-  command -v "$cmd" &>/dev/null || error "'$cmd' not found on PATH"
-done
-info "Prerequisites OK"
-
-# ── Helm repo ─────────────────────────────────────────────────────────────────
-info "Adding KubeVela helm repo..."
+echo "==> Adding KubeVela Helm repo"
 helm repo add kubevela https://kubevela.github.io/charts
 helm repo update
 
-# ── Install vela-core ─────────────────────────────────────────────────────────
-info "Installing KubeVela v${KUBEVELA_VERSION} into namespace '${VELA_NAMESPACE}'..."
-helm upgrade --install kubevela kubevela/vela-core \
-  --namespace "${VELA_NAMESPACE}" \
+echo "==> Installing KubeVela core into vela-system namespace"
+helm install \
   --create-namespace \
-  --version "${KUBEVELA_VERSION}" \
-  --wait \
-  --timeout 5m
+  -n vela-system \
+  kubevela kubevela/vela-core \
+  --wait
 
-info "vela-core installed"
+echo "==> Waiting for KubeVela pods to be ready"
+kubectl wait --for=condition=Ready pods \
+  -l app.kubernetes.io/name=vela-core \
+  -n vela-system \
+  --timeout=300s
 
-# ── Install vela CLI ──────────────────────────────────────────────────────────
-if command -v vela &>/dev/null; then
-  warn "vela CLI already on PATH ($(vela version --client 2>/dev/null | head -1)), skipping install"
-else
-  info "Installing vela CLI v${KUBEVELA_VERSION}..."
-  curl -fsSL https://kubevela.io/script/install.sh | bash -s "${KUBEVELA_VERSION}"
-fi
+echo "==> Enabling VelaUX addon (dashboard)"
+vela addon enable velaux
 
-# ── Verify ────────────────────────────────────────────────────────────────────
-info "Waiting for vela-core pods to be ready..."
-kubectl rollout status deployment/kubevela-vela-core \
-  --namespace "${VELA_NAMESPACE}" \
-  --timeout 3m
-
-info "Installed pods:"
-kubectl get pods --namespace "${VELA_NAMESPACE}"
+echo "==> Creating prod namespace for first-app workflow"
+vela env init prod --namespace prod
 
 echo ""
-info "KubeVela v${KUBEVELA_VERSION} ready."
-info "Next: vela env init prod --namespace prod && vela up -f app.yaml"
+echo "KubeVela is ready."
+echo "  Dashboard:  vela port-forward addon-velaux -n vela-system 8080:80"
+echo "  Default creds: admin / VelaUX12345"
