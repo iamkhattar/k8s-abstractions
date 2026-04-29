@@ -26,28 +26,11 @@ Sleep 500ms
 Enter 1
 Sleep 2s
 
-# -- Helm install
-Type "helm repo add kubevela https://kubevela.github.io/charts && helm repo update"
-Sleep 500ms
-Enter 1
-Sleep 4s
-
-Type "helm install --create-namespace -n vela-system kubevela kubevela/vela-core --wait"
-Sleep 500ms
-Enter 1
-Sleep 20s
-
 # -- Verify core is up
 Type "kubectl get pods -n vela-system"
 Sleep 500ms
 Enter 1
 Sleep 4s
-
-# -- VelaUX addon
-Type "vela addon enable velaux"
-Sleep 500ms
-Enter 1
-Sleep 10s
 
 # -- Verify addon pods
 Type "kubectl get pods -n vela-system"
